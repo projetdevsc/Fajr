@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#FAF6F0">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <title>Fajr Wake</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect fill='%23FAF6F0' width='100' height='100' rx='20'/><text y='68' x='50' text-anchor='middle' font-size='55'>🌙</text></svg>">
+  <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect fill='%23FAF6F0' width='100' height='100' rx='20'/><text y='68' x='50' text-anchor='middle' font-size='55'>🌙</text></svg>">
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;0,700&family=Outfit:wght@300;400;500;600;700&family=Noto+Sans+Arabic:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="app" class="shell">
+    <!-- Dot pattern background -->
+    <div class="dot-pattern"></div>
+
+    <!-- ═══════ HOME ═══════ -->
+    <div id="screen-home" class="screen active">
+      <div class="content">
+        <!-- Header -->
+        <div class="header">
+          <svg class="moon-icon" width="48" height="48" viewBox="0 0 40 40" fill="none">
+            <path d="M30 20c0 7.18-5.82 13-13 13-1.74 0-3.39-.34-4.9-.96C16.25 30.57 21.52 24.24 21.52 16.73c0-3.29-1.03-6.34-2.79-8.85A12.95 12.95 0 0117 7c7.18 0 13 5.82 13 13z" fill="var(--gold)" opacity="0.85"/>
+            <circle cx="27" cy="10" r="1.2" fill="var(--gold-light)" opacity="0.6"/>
+            <circle cx="30.5" cy="14" r="0.8" fill="var(--gold-light)" opacity="0.4"/>
+          </svg>
+          <h1 class="title">Fajr Wake</h1>
+          <p class="subtitle">Lève-toi pour la prière</p>
+        </div>
+
+        <div class="divider"><span></span><span class="dot"></span><span></span></div>
+
+        <!-- Clock -->
+        <div id="clock" class="clock">--:--:--</div>
+
+        <!-- Fajr badge -->
+        <div class="fajr-badge">
+          <svg width="18" height="18" viewBox="0 0 40 40" fill="none">
+            <path d="M30 20c0 7.18-5.82 13-13 13-1.74 0-3.39-.34-4.9-.96C16.25 30.57 21.52 24.24 21.52 16.73c0-3.29-1.03-6.34-2.79-8.85A12.95 12.95 0 0117 7c7.18 0 13 5.82 13 13z" fill="var(--gold)" opacity="0.85"/>
+          </svg>
+          <span class="fajr-label">Fajr</span>
+          <span id="fajr-time" class="fajr-time">--:--</span>
+        </div>
+
+        <!-- Offset setting -->
+        <div class="card" id="offset-card">
+          <div class="corners"><i></i><i></i><i></i><i></i></div>
+          <div class="card-label">Réveil avant Fajr</div>
+          <div class="offset-control">
+            <button class="offset-btn" onclick="changeOffset(-5)">−</button>
+            <span id="offset-display" class="offset-value">15 min</span>
+            <button class="offset-btn" onclick="changeOffset(5)">+</button>
+          </div>
+          <p class="offset-hint">Alarme prévue à <strong id="alarm-time-display">--:--</strong></p>
+        </div>
+
+        <!-- Manual city (hidden by default) -->
+        <div class="card hidden" id="manual-card">
+          <div class="corners"><i></i><i></i><i></i><i></i></div>
+          <div class="card-label">Localisation</div>
+          <p class="card-hint" id="location-error"></p>
+          <input type="text" id="input-city" class="input" placeholder="Ville (ex: Paris)">
+          <input type="text" id="input-country" class="input" placeholder="Pays (ex: France)">
+          <button class="btn-primary" onclick="submitManualCity()">Valider</button>
+        </div>
+
+        <!-- Reference photo -->
+        <div class="card" id="ref-card">
+          <div class="corners"><i></i><i></i><i></i><i></i></div>
+          <div class="card-label">Photo de référence</div>
+          <div id="ref-empty">
+            <button class="btn-dashed" onclick="startCamera('ref')">📸 Prendre une photo de ton évier</button>
+          </div>
+          <div id="ref-filled" class="hidden">
+            <img id="ref-img" class="ref-img" alt="Évier référence">
+            <div class="ref-actions">
+              <button class="btn-secondary flex-1" onclick="startCamera('ref')">🔄 Changer</button>
+              <button class="btn-secondary btn-delete" onclick="deleteRef()">🗑</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Arm button -->
+        <button id="btn-arm" class="btn-arm" onclick="toggleArm()" disabled>
+          Activer l'alarme
+        </button>
+
+        <!-- Test -->
+        <button id="btn-test" class="btn-secondary btn-test hidden" onclick="testAlarm()">
+          Tester l'alarme
+        </button>
+
+        <div class="divider"><span></span><span class="dot"></span><span></span></div>
+
+        <p class="footer-hint">
+          Garde l'onglet ouvert pour que l'alarme sonne.<br>
+          Mode urgence disponible après 30s si tu n'es pas chez toi.<br>
+          <strong>Mets aussi une alarme native en backup !</strong>
+        </p>
+      </div>
+    </div>
+
+    <!-- ═══════ CAMERA ═══════ -->
+    <div id="screen-camera" class="screen">
+      <div class="camera-wrap">
+        <video id="camera-video" autoplay playsinline muted></video>
+        <p id="camera-hint" class="camera-hint">Prends une photo de ton évier</p>
+        <div class="camera-buttons">
+          <button class="btn-capture" onclick="capturePhoto()">📸</button>
+          <button class="btn-cancel" onclick="cancelCamera()">✕</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════ ALARM ═══════ -->
+    <div id="screen-alarm" class="screen">
+      <div class="content alarm-content">
+        <!-- Pulsing moon -->
+        <div class="alarm-moon-wrap">
+          <div class="alarm-ring"></div>
+          <svg class="moon-icon" width="50" height="50" viewBox="0 0 40 40" fill="none">
+            <path d="M30 20c0 7.18-5.82 13-13 13-1.74 0-3.39-.34-4.9-.96C16.25 30.57 21.52 24.24 21.52 16.73c0-3.29-1.03-6.34-2.79-8.85A12.95 12.95 0 0117 7c7.18 0 13 5.82 13 13z" fill="var(--gold)" opacity="0.85"/>
+            <circle cx="27" cy="10" r="1.2" fill="var(--gold-light)" opacity="0.6"/>
+          </svg>
+        </div>
+
+        <div class="card-label">Salat al-Fajr</div>
+        <h1 id="alarm-title" class="alarm-title shake">Lève-toi pour la prière</h1>
+        <div id="alarm-clock" class="alarm-clock">--:--:--</div>
+
+        <!-- Status messages -->
+        <div id="alarm-comparing" class="hidden alarm-status">
+          <span class="pulse-dot">◉</span> Comparaison en cours...
+        </div>
+        <div id="alarm-fail" class="hidden alarm-card alarm-card-fail">
+          Ce n'est pas ton évier — réessaye
+        </div>
+        <div id="alarm-success" class="hidden alarm-card alarm-card-success">
+          ✓ Évier reconnu — Alhamdulillah, bonne prière
+        </div>
+
+        <!-- Alarm actions -->
+        <div id="alarm-actions">
+          <button id="btn-photo-verify" class="btn-primary" onclick="startCamera('verify')">📸 Photographier l'évier</button>
+          <button id="btn-emergency" class="btn-danger hidden" onclick="startEmergency()">🧠 Mode Urgence</button>
+          <p id="emergency-countdown" class="emergency-hint">Mode urgence dans <span id="emergency-timer">30</span>s</p>
+        </div>
+
+        <button id="btn-alarm-back" class="btn-primary btn-success hidden" onclick="goHome()">Retour</button>
+      </div>
+    </div>
+
+    <!-- ═══════ EMERGENCY ═══════ -->
+    <div id="screen-emergency" class="screen">
+      <div class="content">
+        <div class="card emergency-card fade-up">
+          <div class="corners"><i></i><i></i><i></i><i></i></div>
+          <div class="card-label">Mode urgence</div>
+          <div class="divider"><span></span><span class="dot"></span><span></span></div>
+          <p class="card-hint">Résous ce calcul pour prouver que tu es réveillé</p>
+
+          <div id="challenge-question" class="challenge-q"></div>
+          <input type="number" inputmode="numeric" id="challenge-input" class="input challenge-input" placeholder="Ta réponse"
+            onkeydown="if(event.key==='Enter')submitChallenge()">
+          <p id="challenge-error" class="hidden challenge-error">Mauvaise réponse — en voilà un autre</p>
+          <button class="btn-danger" onclick="submitChallenge()">Valider</button>
+          <button class="btn-link" onclick="showScreen('alarm')">← Retour à la photo</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Adhan audio (preload) -->
+  <audio id="adhan-audio" preload="auto" loop>
+    <source src="https://cdn.aladhan.com/audio/adhans/a4.mp3" type="audio/mpeg">
+  </audio>
+
+  <script src="app.js"></script>
+</body>
+</html>

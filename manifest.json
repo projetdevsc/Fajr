@@ -1,0 +1,18 @@
+{
+  "name": "Fajr Wake — Lève-toi pour la prière",
+  "short_name": "Fajr Wake",
+  "description": "Réveil intelligent pour la prière du Fajr avec vérification photo",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#FAF6F0",
+  "theme_color": "#FAF6F0",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect fill='%23FAF6F0' width='100' height='100' rx='20'/><text y='68' x='50' text-anchor='middle' font-size='55'>🌙</text></svg>",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
