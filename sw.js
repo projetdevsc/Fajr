@@ -49,11 +49,30 @@ self.addEventListener('fetch', (e) => {
 
 // ─── Message from main thread ───
 let alarmTimeout = null;
+let testTimeout = null;
 
 self.addEventListener('message', (e) => {
   if (e.data.type === 'SCHEDULE_ALARM') {
     const { hour, minute } = e.data;
     scheduleAlarm(hour, minute);
+  }
+  if (e.data.type === 'SCHEDULE_TEST') {
+    if (testTimeout) clearTimeout(testTimeout);
+    testTimeout = setTimeout(() => {
+      self.registration.showNotification('🧪 Fajr Wake — Test alarme !', {
+        body: 'Ceci est un test. Ouvre l\'app pour désactiver.',
+        tag: 'fajr-test',
+        requireInteraction: true,
+        vibrate: [500, 200, 500, 200, 500, 200, 500],
+        actions: [{ action: 'open', title: 'Ouvrir Fajr Wake' }]
+      });
+      self.clients.matchAll({ type: 'window' }).then(clients => {
+        clients.forEach(client => client.postMessage({ type: 'ALARM_TRIGGER' }));
+      });
+    }, e.data.delayMs);
+  }
+  if (e.data.type === 'CANCEL_TEST') {
+    if (testTimeout) { clearTimeout(testTimeout); testTimeout = null; }
   }
 });
 

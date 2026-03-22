@@ -3,25 +3,24 @@
    ═══════════════════════════════════ */
 
 // ─── State ───
-let fajrTime = null;       // "HH:MM" string
+let fajrTime = null;
 let alarmArmed = false;
 let alarmActive = false;
 let dismissed = false;
 let refPhoto = null;
-let offset = 15;           // minutes before fajr
+let offset = 15;
 let emergencySeconds = 30;
 let emergencyInterval = null;
 let cameraStream = null;
-let cameraTarget = null;   // 'ref' | 'verify'
+let cameraTarget = null;
 let challenge = null;
 let wakeLock = null;
+let locationMode = null; // 'auto' | 'manual' | null
 
-// ─── DOM refs ───
 const $ = (id) => document.getElementById(id);
 
 // ─── Init ───
 document.addEventListener('DOMContentLoaded', () => {
-  // Restore state
   refPhoto = localStorage.getItem('fajr_ref_photo');
   const savedArm = localStorage.getItem('fajr_armed') === 'true';
   const savedOffset = parseInt(localStorage.getItem('fajr_offset'));
@@ -31,45 +30,36 @@ document.addEventListener('DOMContentLoaded', () => {
   if (!isNaN(savedOffset)) offset = savedOffset;
   updateOffsetDisplay();
 
-  if (refPhoto) showRefPhoto();
+  if (refPhoto) {
+    showRefPhoto();
+  } else {
+    $('status-ref-missing').classList.remove('hidden');
+  }
 
-  // Start clock
   updateClock();
   setInterval(updateClock, 1000);
 
-  // Fetch fajr time
   if (savedCity && savedCountry) {
     fetchFajrByCity(savedCity, savedCountry);
   } else {
     fetchFajrByGeo();
   }
 
-  // Restore arm state after fajr is loaded
   if (savedArm) {
-    setTimeout(() => {
-      if (fajrTime) {
-        alarmArmed = true;
-        updateArmButton();
-      }
-    }, 2000);
+    setTimeout(() => { if (fajrTime) { alarmArmed = true; updateArmButton(); } }, 2000);
   }
 
-  // Register service worker
   registerSW();
-
-  // Request notification permission
   if ('Notification' in window && Notification.permission === 'default') {
     Notification.requestPermission();
   }
-
-  // Alarm check loop
   setInterval(checkAlarm, 10000);
 });
 
 // ─── Clock ───
 function updateClock() {
   const now = new Date();
-  const str = now.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const str = now.toLocaleTimeString('fr-FR', { hour:'2-digit', minute:'2-digit', second:'2-digit' });
   $('clock').textContent = str;
   if ($('alarm-clock')) $('alarm-clock').textContent = str;
 }
@@ -77,7 +67,7 @@ function updateClock() {
 // ─── Fajr fetch ───
 async function fetchFajrByGeo() {
   if (!navigator.geolocation) {
-    showManualInput('Géolocalisation non supportée');
+    showLocationNeedsManual('Géolocalisation non supportée');
     return;
   }
   navigator.geolocation.getCurrentPosition(
@@ -87,15 +77,17 @@ async function fetchFajrByGeo() {
         const res = await fetch(`https://api.aladhan.com/v1/timings/${ts}?latitude=${pos.coords.latitude}&longitude=${pos.coords.longitude}&method=2`);
         const json = await res.json();
         if (json.data?.timings?.Fajr) {
+          locationMode = 'auto';
           setFajrTime(json.data.timings.Fajr);
+          updateLocationUI();
         } else {
-          showManualInput('Données horaires invalides');
+          showLocationNeedsManual('Données invalides');
         }
       } catch {
-        showManualInput('Erreur réseau');
+        showLocationNeedsManual('Erreur réseau');
       }
     },
-    () => showManualInput('Position refusée')
+    () => showLocationNeedsManual('Position refusée')
   );
 }
 
@@ -104,14 +96,16 @@ async function fetchFajrByCity(city, country) {
     const res = await fetch(`https://api.aladhan.com/v1/timingsByCity?city=${encodeURIComponent(city)}&country=${encodeURIComponent(country)}&method=2`);
     const json = await res.json();
     if (json.data?.timings?.Fajr) {
-      setFajrTime(json.data.timings.Fajr);
+      locationMode = 'manual';
       localStorage.setItem('fajr_city', city);
       localStorage.setItem('fajr_country', country);
+      setFajrTime(json.data.timings.Fajr);
+      updateLocationUI();
     } else {
-      showManualInput('Ville non trouvée');
+      $('location-error').textContent = 'Ville non trouvée';
     }
   } catch {
-    showManualInput('Erreur réseau');
+    $('location-error').textContent = 'Erreur réseau';
   }
 }
 
@@ -121,15 +115,41 @@ function submitManualCity() {
   if (city && country) fetchFajrByCity(city, country);
 }
 
-function showManualInput(err) {
-  $('manual-card').classList.remove('hidden');
+function showLocationNeedsManual(err) {
   $('location-error').textContent = err + '. Entre ta ville :';
+  $('status-location-missing').classList.remove('hidden');
+  // Settings location stays on manual form
+  $('location-auto').classList.add('hidden');
+  $('location-saved').classList.add('hidden');
+  $('location-manual').classList.remove('hidden');
+}
+
+function showManualInputForce() {
+  $('location-auto').classList.add('hidden');
+  $('location-saved').classList.add('hidden');
+  $('location-manual').classList.remove('hidden');
+  $('location-error').textContent = '';
+}
+
+function updateLocationUI() {
+  $('status-location-missing').classList.add('hidden');
+  if (locationMode === 'auto') {
+    $('location-auto').classList.remove('hidden');
+    $('location-saved').classList.add('hidden');
+    $('location-manual').classList.add('hidden');
+  } else if (locationMode === 'manual') {
+    const city = localStorage.getItem('fajr_city') || '';
+    const country = localStorage.getItem('fajr_country') || '';
+    $('location-city-display').textContent = city + ', ' + country;
+    $('location-saved').classList.remove('hidden');
+    $('location-auto').classList.add('hidden');
+    $('location-manual').classList.add('hidden');
+  }
 }
 
 function setFajrTime(time) {
   fajrTime = time;
   $('fajr-time').textContent = time;
-  $('manual-card').classList.add('hidden');
   $('btn-arm').disabled = false;
   updateAlarmTimeDisplay();
 }
@@ -147,55 +167,44 @@ function updateOffsetDisplay() {
 }
 
 function updateAlarmTimeDisplay() {
-  if (!fajrTime) { $('alarm-time-display').textContent = '--:--'; return; }
   $('alarm-time-display').textContent = getAlarmTimeStr();
 }
 
 function getAlarmTimeStr() {
   if (!fajrTime) return '--:--';
   const [h, m] = fajrTime.split(':').map(Number);
-  const d = new Date();
-  d.setHours(h, m, 0, 0);
-  d.setMinutes(d.getMinutes() - offset);
-  return d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+  const d = new Date(); d.setHours(h, m, 0, 0); d.setMinutes(d.getMinutes() - offset);
+  return d.toLocaleTimeString('fr-FR', { hour:'2-digit', minute:'2-digit' });
 }
 
 function getAlarmHM() {
   if (!fajrTime) return null;
   const [h, m] = fajrTime.split(':').map(Number);
-  const d = new Date();
-  d.setHours(h, m, 0, 0);
-  d.setMinutes(d.getMinutes() - offset);
+  const d = new Date(); d.setHours(h, m, 0, 0); d.setMinutes(d.getMinutes() - offset);
   return { h: d.getHours(), m: d.getMinutes() };
 }
 
-// ─── Arm / disarm ───
+// ─── Arm ───
 function toggleArm() {
   alarmArmed = !alarmArmed;
   dismissed = false;
   localStorage.setItem('fajr_armed', alarmArmed ? 'true' : 'false');
   updateArmButton();
-
-  if (alarmArmed) {
-    acquireWakeLock();
-    scheduleNotification();
-  } else {
-    releaseWakeLock();
-  }
+  if (alarmArmed) { acquireWakeLock(); scheduleNotification(); }
+  else { releaseWakeLock(); }
 }
 
 function updateArmButton() {
   const btn = $('btn-arm');
   if (alarmArmed) {
-    btn.textContent = `✓ Alarme activée — ${getAlarmTimeStr()}`;
+    btn.textContent = '✓ Alarme activée — ' + getAlarmTimeStr();
     btn.classList.add('armed');
   } else {
     btn.textContent = 'Activer l\'alarme';
     btn.classList.remove('armed');
   }
-
-  // Show/hide test button
   if (refPhoto) $('btn-test').classList.remove('hidden');
+  else $('btn-test').classList.add('hidden');
 }
 
 // ─── Alarm check ───
@@ -204,9 +213,7 @@ function checkAlarm() {
   const target = getAlarmHM();
   if (!target) return;
   const now = new Date();
-  if (now.getHours() === target.h && now.getMinutes() === target.m) {
-    triggerAlarm();
-  }
+  if (now.getHours() === target.h && now.getMinutes() === target.m) triggerAlarm();
 }
 
 function triggerAlarm() {
@@ -216,7 +223,6 @@ function triggerAlarm() {
   startEmergencyCountdown();
   fireNotification();
 
-  // Update UI
   $('alarm-comparing').classList.add('hidden');
   $('alarm-fail').classList.add('hidden');
   $('alarm-success').classList.add('hidden');
@@ -224,33 +230,56 @@ function triggerAlarm() {
   $('btn-alarm-back').classList.add('hidden');
   $('alarm-title').classList.add('shake');
 
-  if (refPhoto) {
-    $('btn-photo-verify').classList.remove('hidden');
-  } else {
-    $('btn-photo-verify').classList.add('hidden');
-  }
+  if (refPhoto) $('btn-photo-verify').classList.remove('hidden');
+  else $('btn-photo-verify').classList.add('hidden');
 }
+
+// ─── Test with countdown ───
+let testCountdownInterval = null;
+let testSeconds = 60;
 
 function testAlarm() {
   dismissed = false;
-  triggerAlarm();
+  testSeconds = 60;
+  $('btn-test').classList.add('hidden');
+  $('test-countdown').classList.remove('hidden');
+  $('test-timer').textContent = testSeconds;
+
+  if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+    navigator.serviceWorker.controller.postMessage({ type: 'SCHEDULE_TEST', delayMs: 60000 });
+  }
+
+  testCountdownInterval = setInterval(() => {
+    testSeconds--;
+    $('test-timer').textContent = testSeconds;
+    if (testSeconds <= 0) {
+      clearInterval(testCountdownInterval);
+      $('test-countdown').classList.add('hidden');
+      $('btn-test').classList.remove('hidden');
+      triggerAlarm();
+    }
+  }, 1000);
+}
+
+function cancelTest() {
+  clearInterval(testCountdownInterval);
+  $('test-countdown').classList.add('hidden');
+  $('btn-test').classList.remove('hidden');
+  if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+    navigator.serviceWorker.controller.postMessage({ type: 'CANCEL_TEST' });
+  }
 }
 
 // ─── Audio ───
 function playAdhan() {
   const audio = $('adhan-audio');
-  audio.currentTime = 0;
-  audio.volume = 1;
-  audio.play().catch(() => {
-    // Autoplay blocked — fallback to Web Audio beep
-    playFallbackBeep();
-  });
+  audio.currentTime = 0; audio.volume = 1;
+  audio.play().catch(() => playFallbackBeep());
 }
 
 function stopAdhan() {
   const audio = $('adhan-audio');
-  audio.pause();
-  audio.currentTime = 0;
+  audio.pause(); audio.currentTime = 0;
 }
 
 let beepInterval = null;
@@ -260,23 +289,18 @@ function playFallbackBeep() {
     [392, 440, 523].forEach((freq, i) => {
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
-      osc.type = 'sine';
-      osc.frequency.value = freq;
+      osc.type = 'sine'; osc.frequency.value = freq;
       const now = ctx.currentTime;
       gain.gain.setValueAtTime(0.18, now);
       gain.gain.exponentialRampToValueAtTime(0.01, now + 0.6);
       osc.connect(gain).connect(ctx.destination);
-      osc.start(now + i * 0.18);
-      osc.stop(now + 0.7 + i * 0.18);
+      osc.start(now + i * 0.18); osc.stop(now + 0.7 + i * 0.18);
     });
   }
   beep();
   beepInterval = setInterval(beep, 1100);
 }
-
-function stopFallbackBeep() {
-  if (beepInterval) { clearInterval(beepInterval); beepInterval = null; }
-}
+function stopFallbackBeep() { if (beepInterval) { clearInterval(beepInterval); beepInterval = null; } }
 
 // ─── Emergency countdown ───
 function startEmergencyCountdown() {
@@ -296,59 +320,45 @@ function startEmergencyCountdown() {
   }, 1000);
 }
 
-// ─── Dismiss alarm ───
+// ─── Dismiss ───
 function dismissAlarm() {
-  alarmActive = false;
-  alarmArmed = false;
-  dismissed = true;
+  alarmActive = false; alarmArmed = false; dismissed = true;
   localStorage.setItem('fajr_armed', 'false');
-  stopAdhan();
-  stopFallbackBeep();
+  stopAdhan(); stopFallbackBeep();
   clearInterval(emergencyInterval);
   releaseWakeLock();
 }
 
-function goHome() {
-  showScreen('home');
-  updateArmButton();
-}
+function goHome() { showScreen('home'); updateArmButton(); }
 
 // ─── Camera ───
 async function startCamera(target) {
   cameraTarget = target;
   showScreen('camera');
-
   $('camera-hint').textContent = target === 'ref'
     ? 'Prends une photo de ton évier — ce sera ta référence'
     : 'Photographie ton évier pour couper l\'alarme';
-
   try {
-    cameraStream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: 'environment', width: 640, height: 480 }
-    });
+    cameraStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode:'environment', width:640, height:480 } });
     $('camera-video').srcObject = cameraStream;
   } catch {
     alert('Impossible d\'accéder à la caméra');
-    showScreen(alarmActive ? 'alarm' : 'home');
+    showScreen(alarmActive ? 'alarm' : 'settings');
   }
 }
 
 function stopCamera() {
-  if (cameraStream) {
-    cameraStream.getTracks().forEach(t => t.stop());
-    cameraStream = null;
-  }
+  if (cameraStream) { cameraStream.getTracks().forEach(t => t.stop()); cameraStream = null; }
 }
 
 function cancelCamera() {
   stopCamera();
-  showScreen(alarmActive ? 'alarm' : 'home');
+  showScreen(alarmActive ? 'alarm' : 'settings');
 }
 
 async function capturePhoto() {
   const video = $('camera-video');
   if (!video) return;
-
   const canvas = document.createElement('canvas');
   canvas.width = video.videoWidth || 640;
   canvas.height = video.videoHeight || 480;
@@ -360,18 +370,16 @@ async function capturePhoto() {
     refPhoto = dataUrl;
     localStorage.setItem('fajr_ref_photo', dataUrl);
     showRefPhoto();
-    showScreen('home');
-    $('btn-test').classList.remove('hidden');
+    $('status-ref-missing').classList.add('hidden');
+    showScreen('settings');
+    updateArmButton();
   } else {
-    // Verify
     showScreen('alarm');
     $('alarm-comparing').classList.remove('hidden');
     $('alarm-fail').classList.add('hidden');
-
     try {
       const score = await compareImages(refPhoto, dataUrl);
       $('alarm-comparing').classList.add('hidden');
-
       if (score >= 0.52) {
         $('alarm-success').classList.remove('hidden');
         $('alarm-actions').classList.add('hidden');
@@ -399,53 +407,43 @@ function deleteRef() {
   localStorage.removeItem('fajr_ref_photo');
   $('ref-empty').classList.remove('hidden');
   $('ref-filled').classList.add('hidden');
-  $('btn-test').classList.add('hidden');
+  $('status-ref-missing').classList.remove('hidden');
+  updateArmButton();
 }
 
 // ─── Image comparison ───
 function getImageData(src) {
   return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
+    const img = new Image(); img.crossOrigin = 'anonymous';
     img.onload = () => {
-      const c = document.createElement('canvas');
-      c.width = c.height = 64;
-      const ctx = c.getContext('2d');
-      ctx.drawImage(img, 0, 0, 64, 64);
+      const c = document.createElement('canvas'); c.width = c.height = 64;
+      const ctx = c.getContext('2d'); ctx.drawImage(img, 0, 0, 64, 64);
       resolve(ctx.getImageData(0, 0, 64, 64));
     };
-    img.onerror = reject;
-    img.src = src;
+    img.onerror = reject; img.src = src;
   });
 }
 
 function computeHistogram(imageData) {
   const { data } = imageData;
-  const bins = 16;
-  const rH = new Float32Array(bins), gH = new Float32Array(bins), bH = new Float32Array(bins);
+  const rH = new Float32Array(16), gH = new Float32Array(16), bH = new Float32Array(16);
   const total = data.length / 4;
   for (let i = 0; i < data.length; i += 4) {
-    rH[Math.floor(data[i] / 16)]++;
-    gH[Math.floor(data[i + 1] / 16)]++;
-    bH[Math.floor(data[i + 2] / 16)]++;
+    rH[Math.floor(data[i]/16)]++; gH[Math.floor(data[i+1]/16)]++; bH[Math.floor(data[i+2]/16)]++;
   }
-  for (let i = 0; i < bins; i++) { rH[i] /= total; gH[i] /= total; bH[i] /= total; }
+  for (let i = 0; i < 16; i++) { rH[i]/=total; gH[i]/=total; bH[i]/=total; }
   return { rH, gH, bH };
 }
 
 async function compareImages(ref, test) {
   const [d1, d2] = await Promise.all([getImageData(ref), getImageData(test)]);
   const h1 = computeHistogram(d1), h2 = computeHistogram(d2);
-  let score = 0;
-  for (let i = 0; i < 16; i++) {
-    score += Math.min(h1.rH[i], h2.rH[i]);
-    score += Math.min(h1.gH[i], h2.gH[i]);
-    score += Math.min(h1.bH[i], h2.bH[i]);
-  }
-  return score / 3;
+  let s = 0;
+  for (let i = 0; i < 16; i++) { s += Math.min(h1.rH[i],h2.rH[i]) + Math.min(h1.gH[i],h2.gH[i]) + Math.min(h1.bH[i],h2.bH[i]); }
+  return s / 3;
 }
 
-// ─── Emergency / Math challenge ───
+// ─── Emergency ───
 function startEmergency() {
   challenge = generateChallenge();
   $('challenge-question').textContent = challenge.q;
@@ -457,20 +455,18 @@ function startEmergency() {
 
 function generateChallenge() {
   const ops = [
-    () => { const a = 12 + Math.floor(Math.random() * 40), b = 8 + Math.floor(Math.random() * 30); return { q: `${a} × ${b}`, a: a * b }; },
-    () => { const a = 100 + Math.floor(Math.random() * 500), b = 100 + Math.floor(Math.random() * 400); return { q: `${a} + ${b}`, a: a + b }; },
-    () => { const a = 10 + Math.floor(Math.random() * 30), b = 5 + Math.floor(Math.random() * 20); return { q: `${a * b} ÷ ${a}`, a: b }; },
+    () => { const a=2+Math.floor(Math.random()*8), b=2+Math.floor(Math.random()*8); return {q:`${a} × ${b}`,a:a*b}; },
+    () => { const a=10+Math.floor(Math.random()*40), b=10+Math.floor(Math.random()*40); return {q:`${a} + ${b}`,a:a+b}; },
+    () => { const a=2+Math.floor(Math.random()*9), b=2+Math.floor(Math.random()*5); return {q:`${a*b} ÷ ${a}`,a:b}; },
+    () => { const a=10+Math.floor(Math.random()*50), b=3+Math.floor(Math.random()*15); return {q:`${a} − ${b}`,a:a-b}; },
   ];
-  return ops[Math.floor(Math.random() * ops.length)]();
+  return ops[Math.floor(Math.random()*ops.length)]();
 }
 
 function submitChallenge() {
   if (!challenge) return;
-  const answer = parseInt($('challenge-input').value);
-  if (answer === challenge.a) {
-    dismissAlarm();
-    showScreen('home');
-    updateArmButton();
+  if (parseInt($('challenge-input').value) === challenge.a) {
+    dismissAlarm(); showScreen('home'); updateArmButton();
   } else {
     $('challenge-error').classList.remove('hidden');
     challenge = generateChallenge();
@@ -480,7 +476,7 @@ function submitChallenge() {
   }
 }
 
-// ─── Screen navigation ───
+// ─── Screens ───
 function showScreen(name) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   $('screen-' + name).classList.add('active');
@@ -489,43 +485,28 @@ function showScreen(name) {
 // ─── Wake Lock ───
 async function acquireWakeLock() {
   if ('wakeLock' in navigator) {
-    try {
-      wakeLock = await navigator.wakeLock.request('screen');
-    } catch { /* silently fail */ }
+    try { wakeLock = await navigator.wakeLock.request('screen'); } catch {}
   }
 }
-
-function releaseWakeLock() {
-  if (wakeLock) {
-    wakeLock.release();
-    wakeLock = null;
-  }
-}
+function releaseWakeLock() { if (wakeLock) { wakeLock.release(); wakeLock = null; } }
 
 // ─── Notifications ───
 function fireNotification() {
   if ('Notification' in window && Notification.permission === 'granted') {
     const n = new Notification('🌙 Fajr Wake — Lève-toi !', {
       body: 'Il est l\'heure de la prière du Fajr',
-      icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y="80" x="50" text-anchor="middle" font-size="80">🌙</text></svg>',
-      tag: 'fajr-alarm',
-      requireInteraction: true,
-      vibrate: [500, 200, 500, 200, 500],
+      tag: 'fajr-alarm', requireInteraction: true,
+      vibrate: [500,200,500,200,500],
     });
     n.onclick = () => { window.focus(); n.close(); };
   }
 }
 
 function scheduleNotification() {
-  // Schedule via SW if available
   if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
     const target = getAlarmHM();
     if (target) {
-      navigator.serviceWorker.controller.postMessage({
-        type: 'SCHEDULE_ALARM',
-        hour: target.h,
-        minute: target.m
-      });
+      navigator.serviceWorker.controller.postMessage({ type:'SCHEDULE_ALARM', hour:target.h, minute:target.m });
     }
   }
 }
@@ -535,16 +516,9 @@ async function registerSW() {
   if ('serviceWorker' in navigator) {
     try {
       const reg = await navigator.serviceWorker.register('sw.js');
-      console.log('SW registered:', reg.scope);
-
-      // Listen for alarm trigger from SW
       navigator.serviceWorker.addEventListener('message', (e) => {
-        if (e.data.type === 'ALARM_TRIGGER' && alarmArmed && !alarmActive && !dismissed) {
-          triggerAlarm();
-        }
+        if (e.data.type === 'ALARM_TRIGGER' && alarmArmed && !alarmActive && !dismissed) triggerAlarm();
       });
-    } catch (e) {
-      console.log('SW registration failed:', e);
-    }
+    } catch (e) { console.log('SW fail:', e); }
   }
 }
